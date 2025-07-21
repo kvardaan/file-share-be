@@ -8,9 +8,9 @@ datasource db {
 }
 
 model File {
-  id       Int     @id @default(autoincrement())
-  url      String? @unique
-  metadata Json?
+  id       Int    @id @default(autoincrement())
+  url      String @unique
+  metadata String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
