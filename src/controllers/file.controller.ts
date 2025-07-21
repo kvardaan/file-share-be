@@ -6,7 +6,7 @@ import { deleteObject, getSignedPutUrl } from "../utils/clients/s3.client"
 import { getFileNameWithFileType, getPublicUrl } from "../utils/helpers"
 import { config } from "../utils/env"
 
-// POST /api/v1/file - adds a new file
+// POST /api/v1/file/put-url - adds a new file
 export const getSignedPutUrlForFile = async (
   request: Request,
   response: Response
@@ -16,6 +16,7 @@ export const getSignedPutUrlForFile = async (
 
     const formattedFileName = getFileNameWithFileType(fileName, fileType)
 
+    // get signed put url
     const putUrl = await getSignedPutUrl({
       bucketName: config.awsS3BucketName!,
       fileName: formattedFileName,
@@ -23,6 +24,7 @@ export const getSignedPutUrlForFile = async (
       fileType,
     })
 
+    // if there was an error
     if (putUrl.error) {
       response
         .status(StatusCodes.FAILED_DEPENDENCY)
@@ -33,8 +35,6 @@ export const getSignedPutUrlForFile = async (
     response.status(StatusCodes.OK).json({
       url: putUrl.signedUrl,
       fileName: formattedFileName,
-      fileType,
-      fileSize,
     })
   } catch (error) {
     response
@@ -53,11 +53,11 @@ export const createFile = async (request: Request, response: Response) => {
     const createdFile = await prisma.file.create({
       data: {
         url: imagePublicUrl,
-        metadata: {
+        metadata: JSON.stringify({
           fileSize,
           fileType,
           fileName,
-        },
+        }),
       },
     })
 
@@ -75,7 +75,7 @@ export const getAllFiles = async (request: Request, response: Response) => {
     const files = await prisma.file.findMany()
 
     response.status(StatusCodes.OK).json({
-      data: files,
+      files,
       count: files.length,
     })
   } catch (error) {
@@ -85,8 +85,8 @@ export const getAllFiles = async (request: Request, response: Response) => {
   }
 }
 
-// GET /api/v1/file/:id - gets a file by id
-export const getFileById = async (request: Request, response: Response) => {
+// DELETE /api/v1/file/:id - deletes a file by id
+export const deleteFileById = async (request: Request, response: Response) => {
   const { id } = request.params
 
   try {
@@ -96,44 +96,41 @@ export const getFileById = async (request: Request, response: Response) => {
       },
     })
 
-    response.status(StatusCodes.OK).json(file)
-  } catch (error) {
-    response
-      .status(StatusCodes.INSUFFICIENT_STORAGE)
-      .json({ error: "Something went wrong!" })
-  }
-}
+    // if file was not found
+    if (!file || !file.metadata) {
+      response
+        .status(StatusCodes.BAD_REQUEST)
+        .json({ error: "File not found!" })
+      return
+    }
 
-// PATCH /api/v1/file/:id - updates a file by id
-// export const updateFileById = async (request: Request, response: Response) => {}
+    const fileMetadata = JSON.parse(file?.metadata)
 
-// DELETE /api/v1/file/:id - deletes a file by id
-export const deleteFileById = async (request: Request, response: Response) => {
-  const { id } = request.params
-  const { fileName } = request.body
-
-  try {
-    // here the id should be fileName
+    // delete file from aws
     const deleteFileFromAws = await deleteObject(
       config.awsS3BucketName!,
-      fileName
+      fileMetadata.fileName
     )
 
+    // check if file was deleted
     if (!deleteFileFromAws.success) {
       response
         .status(StatusCodes.FAILED_DEPENDENCY)
         .json({ error: deleteFileFromAws.error })
-    } else {
-      await prisma.file.delete({
-        where: {
-          id: Number(id),
-        },
-      })
-      response
-        .status(StatusCodes.OK)
-        .json({ message: "File deleted successfully!" })
+      return
     }
-  } catch (error) {
+
+    // delete file from db
+    await prisma.file.delete({
+      where: {
+        id: Number(id),
+      },
+    })
+
+    response
+      .status(StatusCodes.OK)
+      .json({ message: "File deleted successfully!" })
+  } catch {
     response
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
       .json({ error: "Something went wrong!" })

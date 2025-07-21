@@ -10,7 +10,13 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 import { config } from "../env"
 
-const allowedFileTypes = ["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"]
+const allowedFileTypes = [
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "audio/webm",
+  "audio/mp3",
+]
 
 const maxFileSize = 100 * 1024 * 1024 // 100MB
 

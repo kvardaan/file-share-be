@@ -24,8 +24,6 @@ export const doesFileExist = async (
       return
     }
 
-    request.body.file = existingFile
-
     next()
   } catch (error) {
     response
