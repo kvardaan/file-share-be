@@ -18,7 +18,7 @@ const allowedFileTypes = [
   "audio/mp3",
 ]
 
-const maxFileSize = 100 * 1024 * 1024 // 100MB
+const maxAllowedFileSize = 50 * 1024 * 1024 // 50MB
 
 const s3Client = new S3Client({
   region: String(config.awsS3Region),
@@ -33,7 +33,6 @@ type tGetSignedPutUrlParams = {
   fileName: string
   fileType: string
   fileSize: number
-  // checksum: string
 }
 
 type tGetSignedPutUrlResponse = Promise<{
@@ -83,13 +82,12 @@ export const getSignedPutUrl = async ({
   fileName,
   fileType,
   fileSize,
-  // checksum,
 }: tGetSignedPutUrlParams): Promise<tGetSignedPutUrlResponse> => {
   if (!allowedFileTypes.includes(fileType)) {
     return { success: false, error: "Invalid file type!" }
   }
 
-  if (fileSize > maxFileSize) {
+  if (fileSize > maxAllowedFileSize) {
     return { success: false, error: "File size too large!" }
   }
 
@@ -98,7 +96,6 @@ export const getSignedPutUrl = async ({
     Key: fileName,
     ContentType: fileType,
     ContentLength: fileSize,
-    // ContentMD5: checksum,
   })
 
   try {
