@@ -2,7 +2,13 @@ import { Request, Response } from "express"
 import { StatusCodes } from "http-status-codes"
 
 import prisma from "../utils/clients/prisma.client"
-import { deleteObject, getSignedPutUrl } from "../utils/clients/s3.client"
+import {
+  deleteObject,
+  getSignedPutUrl,
+  createMultipartUpload,
+  completeMultipartUpload,
+  getMultipartPresignedPartUrls,
+} from "../utils/clients/s3.client"
 import { getFileNameWithFileType, getPublicUrl } from "../utils/helpers"
 import { config } from "../utils/env"
 
@@ -17,15 +23,15 @@ export const getSignedPutUrlForFile = async (
     const formattedFileName = getFileNameWithFileType(fileName, fileType)
 
     // get signed put url
-    const putUrl = await getSignedPutUrl({
-      bucketName: config.awsS3BucketName!,
-      fileName: formattedFileName,
+    const putUrl = await getSignedPutUrl(
+      config.awsS3BucketName!,
+      formattedFileName,
       fileSize,
-      fileType,
-    })
+      fileType
+    )
 
     // if there was an error
-    if (putUrl.error) {
+    if (!putUrl.success) {
       response
         .status(StatusCodes.FAILED_DEPENDENCY)
         .json({ error: putUrl.error || "Something went wrong!" })
@@ -134,5 +140,106 @@ export const deleteFileById = async (request: Request, response: Response) => {
     response
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
       .json({ error: "Something went wrong!" })
+  }
+}
+
+// POST /api/v1/file/initiate-multipart-upload
+export const initiateMultipartUpload = async (
+  request: Request,
+  response: Response
+) => {
+  try {
+    const { fileName, fileType } = request.body
+
+    const formattedFileName = getFileNameWithFileType(fileName, fileType)
+
+    const initUpload = await createMultipartUpload(
+      config.awsS3BucketName!,
+      formattedFileName,
+      fileType
+    )
+
+    if (!initUpload.success) {
+      response
+        .status(StatusCodes.FAILED_DEPENDENCY)
+        .json({ error: initUpload.error })
+      return
+    }
+
+    const { uploadId, key } = initUpload
+
+    response.status(StatusCodes.OK).json({
+      uploadId,
+      key,
+      fileName: formattedFileName,
+    })
+  } catch (error) {
+    response
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ error: "Something went wrong!" })
+  }
+}
+
+// POST /api/v1/file/complete-multipart-upload
+export const finishMultipartUpload = async (
+  request: Request,
+  response: Response
+) => {
+  try {
+    const { uploadId, key, parts } = request.body
+
+    const multipartUpload = await completeMultipartUpload(
+      config.awsS3BucketName!,
+      key,
+      uploadId,
+      parts
+    )
+
+    if (!multipartUpload.success) {
+      response
+        .status(StatusCodes.FAILED_DEPENDENCY)
+        .json({ error: multipartUpload.error })
+      return
+    }
+
+    response.status(StatusCodes.OK).json({
+      message: "File uploaded successfully!",
+    })
+  } catch (error) {
+    response
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ error: "Something went wrong!" })
+  }
+}
+
+// POST /api/v1/file/presigned-part-urls
+export const getPresignedPartUrls = async (
+  request: Request,
+  response: Response
+) => {
+  try {
+    const { uploadId, key, partsCount } = request.body
+
+    const presignedPartUrls = await getMultipartPresignedPartUrls(
+      config.awsS3BucketName!,
+      key,
+      uploadId,
+      partsCount
+    )
+
+    if (!presignedPartUrls.success) {
+      response
+        .status(StatusCodes.FAILED_DEPENDENCY)
+        .json({ error: presignedPartUrls.error })
+      return
+    }
+
+    response.status(StatusCodes.OK).json({
+      urls: presignedPartUrls.urls,
+    })
+  } catch (error) {
+    response.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      error: "Something went wrong!",
+    })
   }
 }
